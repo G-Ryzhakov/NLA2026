@@ -1,0 +1,1652 @@
+(* Content-type: application/vnd.wolfram.mathematica *)
+
+(*** Wolfram Notebook File ***)
+(* http://www.wolfram.com/nb *)
+
+(* CreatedBy='Mathematica 13.3' *)
+
+(*CacheID: 234*)
+(* Internal cache information:
+NotebookFileLineBreakTest
+NotebookFileLineBreakTest
+NotebookDataPosition[       158,          7]
+NotebookDataLength[     82294,       1644]
+NotebookOptionsPosition[     80267,       1602]
+NotebookOutlinePosition[     80728,       1620]
+CellTagsIndexPosition[     80685,       1617]
+WindowTitle->Matrix powers and QR
+WindowFrame->Normal*)
+
+(* Beginning of Notebook Content *)
+Notebook[{
+
+Cell[CellGroupData[{
+Cell["Matrix powers, eigenvectors, and QR", "Title",ExpressionUUID->"c1288c6e-3eb8-425e-b51d-f41ddcf15319"],
+
+Cell["\<\
+One 3D view of the three columns of A^k I. The eigenvector directions remain \
+visible, and an optional QR overlay shows the columns of Q in A^k = Q R.\
+\>", "Text",ExpressionUUID->"f9f18385-668f-45a9-a378-61286f06e999"],
+
+Cell["\<\
+Start: choose Evaluation > Evaluate Notebook. This notebook is \
+self-contained. Edit the example cell to use your own directions and \
+eigenvalues, then press Shift+Enter on that cell.\
+\>", "Text",ExpressionUUID->"11dd1436-046d-40a5-85c7-a81feafffd72"],
+
+Cell[CellGroupData[{
+
+Cell["Implementation (evaluated automatically with the notebook)", "Section",ExpressionUUID->"698e6241-09c3-46ab-80d4-d64f9cec26eb"],
+
+Cell[BoxData[
+ RowBox[{"ToExpression", "[", 
+  "\"\<(* Matrix powers, eigenbasis components, and QR -- English interface. \
+*)\\nClearAll[\\n  basisPowerRealQ, basisPowerNumber, \
+basisPowerMatrixView,\\n  basisPowerMakeData, basisPowerState, \
+basisPowerComponents,\\n  basisPowerLabelPoint, basisPowerArrow, \
+basisPowerAxes, basisPowerPlot, basisPowerPanel,\\n  \
+basisPowerVisualizer\\n];\\n\\nbasisPowerRealQ[x_] := NumericQ[x] && \
+TrueQ[Im[N[x]] == 0];\\n\\nbasisPowerNumber[x_] := Which[\\n  TrueQ[x == 0], \
+0,\\n  10^-3 <= Abs[x] < 10^4, NumberForm[N[x, 8], {6, 3}],\\n  True, \
+ScientificForm[N[x, 8], 3]\\n];\\n\\nbasisPowerMatrixView[m_] := Style[\\n  \
+MatrixForm[Map[basisPowerNumber, m, {2}]], 11, FontFamily -> \
+\\\"Arial\\\"\\n];\\n\\nbasisPowerMakeData::directions =\\n  \\\"Eigenvectors \
+must be a real 3 x 3 matrix with three independent nonzero columns. Each \
+column is normalized internally.\\\";\\nbasisPowerMakeData::values =\\n  \
+\\\"Eigenvalues must be a list of three finite real numbers. This 3D \
+visualization uses real eigenvectors and \
+eigenvalues.\\\";\\nbasisPowerMakeData::iterations =\\n  \\\"MaxIterations \
+must be a nonnegative integer.\\\";\\n\\nbasisPowerMakeData[directions_, \
+values_, maxIterations_: 30] := Module[\\n  {raw, exactValues, s, inverse, a, \
+nonzero, spread, precision,\\n   largest, bound, orthogonalQ},\\n  \
+If[!MatrixQ[directions, basisPowerRealQ] ||\\n     Dimensions[directions] =!= \
+{3, 3},\\n    Message[basisPowerMakeData::directions]; Return[$Failed]\\n  ];\
+\\n  raw = Rationalize[directions, 0];\\n  If[TrueQ[Det[raw] == 0],\\n    \
+Message[basisPowerMakeData::directions]; Return[$Failed]\\n  ];\\n  \
+If[!VectorQ[values, basisPowerRealQ] || Length[values] =!= 3,\\n    \
+Message[basisPowerMakeData::values]; Return[$Failed]\\n  ];\\n  \
+If[!IntegerQ[maxIterations] || maxIterations < 0,\\n    \
+Message[basisPowerMakeData::iterations]; Return[$Failed]\\n  ];\\n  \
+exactValues = Rationalize[values, 0];\\n  nonzero = Select[Abs[exactValues], \
+# > 0 &];\\n  spread = If[nonzero === {}, 0,\\n    Max[0, N[Log[10, \
+Max[nonzero]/Min[nonzero]]]]\\n  ];\\n  (* Exactifying input floats fixes the \
+specified numeric matrix first.\\n     Extra working precision preserves the \
+small directions in A^k. *)\\n  precision = Max[70, 50 + \
+Ceiling[maxIterations spread] +\\n    Ceiling[Max[0, N[Log[10, Norm[N[raw, \
+30]] Norm[Inverse[N[raw, 30]]]]]]]];\\n  s = Transpose[Normalize /@ \
+Transpose[N[raw, precision]]];\\n  inverse = Inverse[s];\\n  exactValues = \
+N[exactValues, precision];\\n  a = s . DiagonalMatrix[exactValues] . inverse;\
+\\n  orthogonalQ = TrueQ[Max[Abs[Flatten[Transpose[s].s - \
+IdentityMatrix[3]]]] < 10^-25];\\n  largest = Max[Abs[exactValues]];\\n  \
+bound = Max[1, Norm[s] Norm[inverse]];\\n  <|\\n    \\\"S\\\" -> s, \
+\\\"InverseS\\\" -> inverse, \\\"Eigenvalues\\\" -> exactValues,\\n    \
+\\\"A\\\" -> a, \\\"MaxIterations\\\" -> maxIterations,\\n    \
+\\\"WorkingPrecision\\\" -> precision, \\\"OrthogonalQ\\\" -> orthogonalQ,\\n \
+   \\\"ZoomLogMaximum\\\" -> Max[6, Ceiling[\\n      N[Log[10, bound]] + \
+maxIterations Max[0, N[Log[10, Max[1, largest]]]]\\n    ] + 2]\\n  |>\\n];\\n\
+\\nbasisPowerComponents[data_, k_Integer] := Module[{weights},\\n  weights = \
+If[k == 0, {1, 1, 1}, data[\\\"Eigenvalues\\\"]^k];\\n  Table[\\n    \
+weights[[j]] data[\\\"InverseS\\\"][[j, i]] data[\\\"S\\\"][[All, j]],\\n    \
+{i, 3}, {j, 3}\\n  ]\\n];\\n\\nbasisPowerState[data_, k_Integer] := \
+Module[\\n  {power, qRows, r, q, signs, scale, weights, n = Clip[k, {0, data[\
+\\\"MaxIterations\\\"]}]},\\n  weights = If[n == 0, {1, 1, 1}, \
+data[\\\"Eigenvalues\\\"]^n];\\n  power = If[n == 0, N[IdentityMatrix[3], \
+data[\\\"WorkingPrecision\\\"]],\\n    data[\\\"S\\\"] . \
+DiagonalMatrix[weights] . data[\\\"InverseS\\\"]\\n  ];\\n  scale = \
+Max[Abs[Flatten[power]]];\\n  If[TrueQ[scale == 0],\\n    q = \
+IdentityMatrix[3]; r = power,\\n    (* Mathematica returns row-oriented Q: \
+Qrows . M == R.\\n       Therefore the column-oriented factor is \
+Transpose[Qrows]. *)\\n    {qRows, r} = QRDecomposition[power/scale];\\n    q \
+= Transpose[qRows]; r = scale r;\\n    signs = Table[If[TrueQ[r[[j, j]] < 0], \
+-1, 1], {j, 3}];\\n    q = q . DiagonalMatrix[signs];\\n    r = \
+DiagonalMatrix[signs] . r\\n  ];\\n  <|\\\"k\\\" -> n, \\\"Power\\\" -> \
+power, \\\"Q\\\" -> q, \\\"R\\\" -> r|>\\n];\\n\\n(* All graphics coordinates \
+are scaled before conversion to machine\\n   precision. This avoids overflow \
+at large powers. Zoom rescales the\\n   scene independently of the camera, so \
+rotating cannot disable it. *)\\nbasisPowerLabelPoint[point_, offset_] :=\\n  \
+N[point + .0025 {offset[[1]], offset[[1]]/2, \
+offset[[2]]}];\\n\\nbasisPowerArrow[vector_, radius_, color_, label_: \
+None,\\n  opacity_: 1., thickness_: 2.5, head_: .013, offset_: {10, 8}] := \
+Module[\\n  {extent, factor, tip, clipped, labelObject},\\n  extent = \
+Max[Abs[vector]];\\n  If[TrueQ[extent == 0] || TrueQ[extent/radius < 10^-6], \
+Return[{}]];\\n  factor = Min[1, .82 radius/extent];\\n  tip = \
+N[(factor/radius) vector];\\n  clipped = TrueQ[factor < 1];\\n  labelObject = \
+If[label === None, {},\\n    Text[\\n      Style[If[clipped, Row[{label, \\\" \
+(outside view)\\\"}], label],\\n        12, color, Background -> White],\\n   \
+   basisPowerLabelPoint[tip, offset], {-1, 0}\\n    ]\\n  ];\\n  {\\n    \
+Directive[color, Opacity[opacity], AbsoluteDashing[None], \
+AbsoluteThickness[thickness]],\\n    If[clipped,\\n      {Line[{{0., 0., 0.}, \
+tip}], PointSize[.006], Point[tip]},\\n      {Arrowheads[head], Arrow[{{0., \
+0., 0.}, tip}]}\\n    ],\\n    labelObject\\n  \
+}\\n];\\n\\nbasisPowerAxes[radius_] := Module[{step, ticks, objects, point, \
+other},\\n  step = 10^Floor[Log[10, radius]];\\n  If[step/radius > .65, step \
+= step/2];\\n  ticks = Select[Range[-4, 4] step, # != 0 && Abs[#] < .79 \
+radius &];\\n  objects = Table[\\n    {\\n      Directive[GrayLevel[.8], \
+AbsoluteDashing[None], AbsoluteThickness[.8]],\\n      Line[{-.89 \
+UnitVector[3, j], .89 UnitVector[3, j]}],\\n      Text[Style[{\\\"x\\\", \
+\\\"y\\\", \\\"z\\\"}[[j]], 12, GrayLevel[.48]], .94 UnitVector[3, j]],\\n    \
+  Table[\\n        point = N[t/radius] UnitVector[3, j];\\n        other = \
+UnitVector[3, If[j == 3, 1, 3]];\\n        {\\n          Line[{point - .008 \
+other, point + .008 other}],\\n          Text[Style[basisPowerNumber[t], 9, \
+GrayLevel[.57]],\\n            basisPowerLabelPoint[point, If[j == 3, {-14, \
+0}, {0, -12}]]]\\n        },\\n        {t, ticks}\\n      ]\\n    }, {j, \
+3}\\n  ];\\n  {objects, GrayLevel[.45], PointSize[.004], Point[{0., 0., 0.}]}\
+\\n];\\n\\nbasisPowerPlot[data_, state_, visible_, showQR_, componentChoice_, \
+zoomLog_,\\n  cameraPoint_, cameraVertical_, cameraAngle_, imageSize_: 850] \
+:= Module[\\n  {colors, qColor, s, columns, components, active, relevant, \
+baseRadius,\\n   radius, eigGuides, componentObjects, vectorObjects, \
+qObjects,\\n   selected, direction, k, componentLabels, labelOffsets},\\n  \
+colors = {RGBColor[.12, .36, .86], RGBColor[.87, .39, .10], RGBColor[.05, \
+.56, .39]};\\n  qColor = RGBColor[.56, .17, .69];\\n  s = data[\\\"S\\\"]; k \
+= state[\\\"k\\\"];\\n  columns = Transpose[state[\\\"Power\\\"]];\\n  \
+components = basisPowerComponents[data, k];\\n  active = Select[Range[3], \
+TrueQ[visible[[#]]] &];\\n  selected = Which[\\n    componentChoice == 0, {},\
+\\n    componentChoice == 4, active,\\n    MemberQ[active, componentChoice], \
+{componentChoice},\\n    True, {}\\n  ];\\n  relevant = Join[{{1, 1, 1}}, \
+columns[[active]], Flatten[components[[selected]], 1]];\\n  baseRadius = 1.4 \
+Max[Abs[Flatten[relevant]]];\\n  radius = baseRadius/10^SetPrecision[zoomLog, \
+30];\\n  labelOffsets = {{10, 12}, {10, -13}, {10, 30}};\\n  eigGuides = \
+Table[\\n    direction = N[s[[All, j]]];\\n    {\\n      \
+Directive[GrayLevel[.56], Opacity[.55], AbsoluteThickness[1.2], \
+AbsoluteDashing[None]],\\n      Line[{-.83 direction/Max[Abs[direction]], .83 \
+direction/Max[Abs[direction]]}],\\n      Text[Style[Row[{Subscript[\\\"v\\\", \
+j], \\\" direction\\\"}], 11, GrayLevel[.32], Background -> White],\\n        \
+basisPowerLabelPoint[.77 direction/Max[Abs[direction]], {-10, -7 - 12 (j - \
+1)}], {1, 0}],\\n      basisPowerArrow[s[[All, j]], radius, GrayLevel[.3],\\n \
+       If[.03 < 1/radius < 1, Subscript[\\\"v\\\", j], None], .9, 1.8, .011, \
+{-14, 10}]\\n    }, {j, 3}\\n  ];\\n  componentLabels = Length[selected] == \
+1;\\n  componentObjects = Table[\\n    Table[\\n      {\\n        \
+basisPowerArrow[components[[i, j]], radius, colors[[i]],\\n          \
+If[componentLabels, Row[{\\\"component \\\", j}], None],\\n          .40, \
+1.5, .009, {8, -18 - 11 j}],\\n        If[componentLabels,\\n          \
+Module[{p = components[[i, j]], w = columns[[i]], ext},\\n            ext = \
+Max[Abs[Flatten[{p, w}]]];\\n            If[TrueQ[ext/radius < .8],\\n        \
+      {Directive[colors[[i]], Opacity[.18], AbsoluteThickness[1], \
+AbsoluteDashing[None]],\\n               Line[N[{p, w}/radius]]}, {}]\\n      \
+    ], {}]\\n      }, {j, 3}], {i, selected}\\n  ];\\n  vectorObjects = \
+Table[\\n    basisPowerArrow[columns[[i]], radius, colors[[i]],\\n      \
+Row[{Superscript[\\\"A\\\", k], \\\" \\\", Subscript[\\\"e\\\", i]}],\\n      \
+1., 3., .014, labelOffsets[[i]]], {i, active}\\n  ];\\n  qObjects = \
+If[TrueQ[showQR],\\n    Table[basisPowerArrow[state[\\\"Q\\\"][[All, i]], \
+radius, qColor,\\n      Subscript[\\\"q\\\", i], .95, 2.3, .012, {-48, -14 + \
+19 i}], {i, 3}], {}\\n  ];\\n  Graphics3D[\\n    {basisPowerAxes[radius], \
+eigGuides, componentObjects, vectorObjects, qObjects},\\n    Axes -> False, \
+Boxed -> False,\\n    PlotRange -> ConstantArray[{-1., 1.}, 3], \
+PlotRangePadding -> None,\\n    ImagePadding -> {{35, 65}, {30, 25}},\\n    \
+ViewCenter -> {1/2, 1/2, 1/2}, ViewPoint -> cameraPoint,\\n    ViewVertical \
+-> cameraVertical, ViewAngle -> cameraAngle,\\n    ViewProjection -> \
+\\\"Perspective\\\", SphericalRegion -> False,\\n    Lighting -> \
+\\\"Neutral\\\", Background -> White,\\n    ImageSize -> {imageSize, \
+Round[.77 imageSize]},\\n    PlotLabel -> Style[Row[{Superscript[\\\"A\\\", \
+k], \\\" I: columns \\\",\\n      Superscript[\\\"A\\\", k], \\\" \\\", \
+Subscript[\\\"e\\\", \\\"i\\\"],\\n      \\\"     |     zoom = \\\", \
+basisPowerNumber[10^SetPrecision[zoomLog, 30]], \\\"x\\\"}], 14, Bold]\\n  \
+]\\n];\\n\\nbasisPowerPanel[data_, state_, showQR_] := Column[\\n  {\\n    \
+Style[Row[{Superscript[\\\"A\\\", state[\\\"k\\\"]], \\\" = S diag(\\\",\\n   \
+   Subscript[\\\"lambda\\\", 1], \\\"^k, \\\", Subscript[\\\"lambda\\\", 2], \
+\\\"^k, \\\",\\n      Subscript[\\\"lambda\\\", 3], \\\"^k) \\\", \
+Superscript[\\\"S\\\", \\\"-1\\\"]}], 12],\\n    Grid[\\n      \
+If[TrueQ[showQR],\\n        {{Style[Row[{Superscript[\\\"A\\\", state[\\\"k\\\
+\"]], \\\" = Q R\\\"}], Bold],\\n          \
+basisPowerMatrixView[state[\\\"Power\\\"]], \\\"=\\\", \
+basisPowerMatrixView[state[\\\"Q\\\"]],\\n          \
+basisPowerMatrixView[state[\\\"R\\\"]]}},\\n        {{Style[Superscript[\\\"A\
+\\\", state[\\\"k\\\"]], Bold], \
+basisPowerMatrixView[state[\\\"Power\\\"]]}}\\n      ], Alignment -> Center, \
+Spacings -> {1, .5}\\n    ],\\n    If[TrueQ[showQR],\\n      Style[\\\"Q \
+columns are unit and mutually perpendicular. Use Unit scale to see them at \
+large k.\\\", 11, GrayLevel[.35]],\\n      Nothing]\\n  }, Alignment -> \
+Center, Spacings -> .6\\n];\\n\\nOptions[basisPowerVisualizer] = {\\n  \
+\\\"Eigenvectors\\\" -> Transpose[{{2, 1, 2}, {-2, 2, 1}, {-1, -2, 2}}],\\n  \
+\\\"Eigenvalues\\\" -> {2, 5/4, 1/2}, \\\"MaxIterations\\\" -> 30,\\n  \
+\\\"Iteration\\\" -> 0, \\\"Zoom\\\" -> 1., \\\"ImageSize\\\" -> 850,\\n  \
+\\\"ShowQR\\\" -> False, \\\"Components\\\" -> \
+4\\n};\\n\\nbasisPowerVisualizer[OptionsPattern[]] := Module[\\n  {data, k0, \
+zoom0, imageSize, qr0, components0},\\n  data = \
+basisPowerMakeData[OptionValue[\\\"Eigenvectors\\\"],\\n    \
+OptionValue[\\\"Eigenvalues\\\"], OptionValue[\\\"MaxIterations\\\"]];\\n  \
+If[data === $Failed, Return[$Failed]];\\n  k0 = \
+Clip[Round[OptionValue[\\\"Iteration\\\"]], {0, \
+data[\\\"MaxIterations\\\"]}];\\n  zoom0 = Clip[N[Log[10, Max[10^-3, \
+OptionValue[\\\"Zoom\\\"]]]], {-3., data[\\\"ZoomLogMaximum\\\"]}];\\n  \
+imageSize = OptionValue[\\\"ImageSize\\\"]; qr0 = \
+TrueQ[OptionValue[\\\"ShowQR\\\"]];\\n  components0 = \
+OptionValue[\\\"Components\\\"];\\n  With[{model = data, imageWidth = \
+imageSize},\\n    DynamicModule[\\n      {iteration = k0, zoomLog = zoom0, \
+visible = {True, True, True},\\n       showQR = qr0, componentChoice = \
+components0,\\n       cameraPoint = {2.5, -3.4, 2.2}, cameraVertical = {0., \
+0., 1.},\\n       cameraAngle = 10 Degree},\\n      Column[\\n        {\\n    \
+      Style[\\\"Matrix powers in an eigenbasis\\\", 21, Bold, \
+GrayLevel[.18]],\\n          Style[\\\"A = S diag(lambda) S^-1; the columns \
+of S are unit eigenvectors.\\\", 12],\\n          Grid[{{Style[\\\"A\\\", \
+Bold], basisPowerMatrixView[model[\\\"A\\\"]],\\n                 Style[\\\"S\
+\\\", Bold], basisPowerMatrixView[model[\\\"S\\\"]],\\n                 \
+Style[\\\"lambda\\\", Bold], \
+basisPowerMatrixView[Transpose[{model[\\\"Eigenvalues\\\"]}]]}},\\n           \
+ Spacings -> {1.1, .6}, Alignment -> Center],\\n          \
+Style[If[model[\\\"OrthogonalQ\\\"],\\n            \\\"The input directions \
+are normalized. Here S is orthogonal: the eigenbasis components are \
+orthogonal projections.\\\",\\n            \\\"The input directions are \
+normalized but not orthogonal. Components use S^-1 e_i; they are not \
+perpendicular projections.\\\"],\\n            11, GrayLevel[.32]],\\n        \
+  Grid[\\n            {\\n              {Style[\\\"Iteration k\\\", Bold], \
+Slider[Dynamic[iteration,\\n                  Function[value, iteration = \
+Clip[Round[value], {0, model[\\\"MaxIterations\\\"]}]]],\\n                \
+{0, model[\\\"MaxIterations\\\"], 1}, ImageSize -> 380], \
+Dynamic[Round[iteration]]},\\n              {Style[\\\"Zoom in / out\\\", \
+Bold], Slider[Dynamic[zoomLog],\\n                {-3., \
+model[\\\"ZoomLogMaximum\\\"], .02}, ImageSize -> 380],\\n                \
+Dynamic[Row[{basisPowerNumber[10^SetPrecision[zoomLog, 30]], \\\"x\\\"}]]}\\n \
+           }, Alignment -> Left, Spacings -> {1.2, .7}\\n          ],\\n      \
+    Row[{\\n            Checkbox[Dynamic[visible[[1]]]], Style[\\\" A^k e1    \
+\\\", RGBColor[.12, .36, .86], Bold],\\n            \
+Checkbox[Dynamic[visible[[2]]]], Style[\\\" A^k e2    \\\", RGBColor[.87, \
+.39, .10], Bold],\\n            Checkbox[Dynamic[visible[[3]]]], Style[\\\" \
+A^k e3        \\\", RGBColor[.05, .56, .39], Bold],\\n            \
+Checkbox[Dynamic[showQR]], Style[\\\" Show Q in A^k = Q R\\\", RGBColor[.56, \
+.17, .69], Bold]\\n          }],\\n          Row[{\\\"Eigenbasis components: \
+\\\",\\n            PopupMenu[Dynamic[componentChoice], {0 -> \\\"Off\\\", 1 \
+-> \\\"e1 only\\\", 2 -> \\\"e2 only\\\", 3 -> \\\"e3 only\\\", 4 -> \\\"All \
+visible vectors\\\"}],\\n            Spacer[20], Button[\\\"Fit vectors\\\", \
+zoomLog = 0.], Spacer[8],\\n            Button[\\\"Unit scale\\\", \
+Module[{st, active, vectors, parts, selected, rad},\\n              st = \
+basisPowerState[model, Round[iteration]];\\n              active = \
+Select[Range[3], TrueQ[visible[[#]]] &];\\n              parts = \
+basisPowerComponents[model, Round[iteration]];\\n              selected = \
+Which[componentChoice == 4, active,\\n                MemberQ[active, \
+componentChoice], {componentChoice}, True, {}];\\n              vectors = \
+Join[{{1, 1, 1}}, Transpose[st[\\\"Power\\\"]][[active]], \
+Flatten[parts[[selected]], 1]];\\n              rad = 1.4 \
+Max[Abs[Flatten[vectors]]];\\n              zoomLog = N[Log[10, rad/1.4]]\\n  \
+          ]], Spacer[8],\\n            Button[\\\"Reset rotation\\\", \
+cameraPoint = {2.5, -3.4, 2.2};\\n              cameraVertical = {0., 0., \
+1.}; cameraAngle = 10 Degree]\\n          }],\\n          Dynamic[\\n         \
+   basisPowerPlot[model, basisPowerState[model, Round[iteration]],\\n         \
+     visible, showQR, componentChoice, zoomLog,\\n              \
+Dynamic[cameraPoint, Function[value, cameraPoint = value]],\\n              \
+Dynamic[cameraVertical, Function[value, cameraVertical = value]],\\n          \
+    Dynamic[cameraAngle, Function[value, cameraAngle = value]], \
+imageWidth],\\n            TrackedSymbols :> {iteration, visible, showQR, \
+componentChoice, zoomLog}\\n          ],\\n          Style[\\\"Grey lines \
+keep the eigenvector directions visible at every scale; their unit arrows \
+have fixed mathematical length. Pale colored arrows are eigenbasis \
+components. Purple arrows are the Q columns. A line ending in a dot with \
+'outside view' has been clipped, not shortened mathematically.\\\",\\n        \
+    11, GrayLevel[.35]],\\n          Style[Row[{\\\"At k = 0: \\\", \
+Subscript[\\\"e\\\", \\\"i\\\"], \\\" = sum_j \\\", Subscript[\\\"c\\\", \
+\\\"ji\\\"], \\\" \\\",\\n            Subscript[\\\"v\\\", \\\"j\\\"], \\\".  \
+At iteration k: \\\", Superscript[\\\"A\\\", \\\"k\\\"], \\\" \\\", \
+Subscript[\\\"e\\\", \\\"i\\\"],\\n            \\\" = sum_j \\\", \
+Subscript[\\\"c\\\", \\\"ji\\\"], \\\" \\\", Superscript[Subscript[\\\"lambda\
+\\\", \\\"j\\\"], \\\"k\\\"],\\n            \\\" \\\", Subscript[\\\"v\\\", \
+\\\"j\\\"], \\\", where C = \\\", Superscript[\\\"S\\\", \\\"-1\\\"], \\\".\\\
+\"}], 12],\\n          Dynamic[basisPowerPanel[model, basisPowerState[model, \
+Round[iteration]], showQR],\\n            TrackedSymbols :> {iteration, \
+showQR}]\\n        }, Alignment -> Center, Spacings -> 1.\\n      ],\\n      \
+SaveDefinitions -> True,\\n      BaseStyle -> {FontFamily -> \\\"Arial\\\", \
+FontSize -> 12}\\n    ]\\n  ]\\n];\>\"", ",", "InputForm", "]"}]], "Input",
+ InitializationCell->True,
+ CellLabel->"In[73]:=",ExpressionUUID->"9d5c6ab7-ffc4-44a4-9411-48db0006a35e"]
+}, Closed]],
+
+Cell[CellGroupData[{
+
+Cell["Choose the matrix", "Section",ExpressionUUID->"f29c7d5e-52ca-4326-aa1e-20bb17bf2c20"],
+
+Cell["\<\
+v1, v2, v3 are column directions, in the same order as the eigenvalues. Their \
+lengths do not matter: each is normalized internally. They must be real, \
+nonzero, and linearly independent. A is constructed as S . \
+DiagonalMatrix[eigenvalues] . Inverse[S].\
+\>", "Text",ExpressionUUID->"6d102023-5570-43b3-aeb4-4c71d0ab5b73"],
+
+Cell[CellGroupData[{
+
+Cell[BoxData[{
+ RowBox[{
+  RowBox[{"v1", "=", 
+   RowBox[{"{", 
+    RowBox[{"2", ",", "1", ",", "2"}], "}"}]}], 
+  ";"}], "\[IndentingNewLine]", 
+ RowBox[{
+  RowBox[{"v2", "=", 
+   RowBox[{"{", 
+    RowBox[{
+     RowBox[{"-", "3"}], ",", "2", ",", "1"}], "}"}]}], 
+  ";"}], "\[IndentingNewLine]", 
+ RowBox[{
+  RowBox[{"v3", "=", 
+   RowBox[{"{", 
+    RowBox[{
+     RowBox[{"-", "1"}], ",", 
+     RowBox[{"-", "2"}], ",", "2"}], "}"}]}], ";"}], "\[IndentingNewLine]", 
+ RowBox[{
+  RowBox[{"eigenvectorMatrix", "=", 
+   RowBox[{"Transpose", "[", 
+    RowBox[{"{", 
+     RowBox[{"v1", ",", "v2", ",", "v3"}], "}"}], "]"}]}], 
+  ";"}], "\[IndentingNewLine]", 
+ RowBox[{"eigenvectorMatrix", " ", ".", " ", 
+  RowBox[{"Transpose", "@", "eigenvectorMatrix"}]}], "\[IndentingNewLine]", 
+ RowBox[{
+  RowBox[{"eigenvalues", "=", 
+   RowBox[{"{", 
+    RowBox[{"2", ",", 
+     FractionBox["5", "4"], ",", 
+     FractionBox["1", "2"]}], "}"}]}], ";"}], "\[IndentingNewLine]", 
+ RowBox[{"basisPowerVisualizer", "[", 
+  RowBox[{
+   RowBox[{"\"\<Eigenvectors\>\"", "\[Rule]", "eigenvectorMatrix"}], ",", 
+   RowBox[{"\"\<Eigenvalues\>\"", "\[Rule]", "eigenvalues"}], ",", 
+   RowBox[{"\"\<MaxIterations\>\"", "\[Rule]", "40"}], ",", 
+   RowBox[{"\"\<ImageSize\>\"", "\[Rule]", "850"}]}], "]"}]}], "Input",
+ CellChangeTimes->{{4.004075177726391*^9, 4.004075183405159*^9}, {
+  4.004084213632139*^9, 4.004084214047866*^9}},
+ CellLabel->"In[87]:=",ExpressionUUID->"bbd211c3-727d-4648-92d6-0f84a186c1b5"],
+
+Cell[BoxData[
+ RowBox[{"{", 
+  RowBox[{
+   RowBox[{"{", 
+    RowBox[{"14", ",", 
+     RowBox[{"-", "2"}], ",", 
+     RowBox[{"-", "1"}]}], "}"}], ",", 
+   RowBox[{"{", 
+    RowBox[{
+     RowBox[{"-", "2"}], ",", "9", ",", "0"}], "}"}], ",", 
+   RowBox[{"{", 
+    RowBox[{
+     RowBox[{"-", "1"}], ",", "0", ",", "9"}], "}"}]}], "}"}]], "Output",
+ CellChangeTimes->{{4.004044232496665*^9, 4.004044254499251*^9}, {
+   4.004044363732986*^9, 4.004044382399457*^9}, 4.004044545032036*^9, {
+   4.004044620465535*^9, 4.0040446304155912`*^9}, {4.004075093295575*^9, 
+   4.0040750951443243`*^9}, 4.004075184148513*^9, 4.004084214975312*^9},
+ CellLabel->"Out[91]=",ExpressionUUID->"22a486bb-fa4a-45f7-9a84-a329e242a832"],
+
+Cell[BoxData[
+ DynamicModuleBox[{$CellContext`iteration$$ = 23, $CellContext`zoomLog$$ = 
+  6.6092975875166, $CellContext`visible$$ = {
+  True, True, True}, $CellContext`showQR$$ = 
+  True, $CellContext`componentChoice$$ = 4, $CellContext`cameraPoint$$ = {
+  2.5, -3.4, 2.2}, $CellContext`cameraVertical$$ = {0., 0., 
+  1.}, $CellContext`cameraAngle$$ = 10 Degree}, 
+  TagBox[GridBox[{
+     {
+      StyleBox["\<\"Matrix powers in an eigenbasis\"\>",
+       StripOnInput->False,
+       LineColor->GrayLevel[0.18],
+       FrontFaceColor->GrayLevel[0.18],
+       BackFaceColor->GrayLevel[0.18],
+       GraphicsColor->GrayLevel[0.18],
+       FontSize->21,
+       FontWeight->Bold,
+       FontColor->GrayLevel[0.18]]},
+     {
+      StyleBox["\<\"A = S diag(lambda) S^-1; the columns of S are unit \
+eigenvectors.\"\>",
+       StripOnInput->False,
+       FontSize->12]},
+     {
+      TagBox[GridBox[{
+         {
+          StyleBox["\<\"A\"\>",
+           StripOnInput->False,
+           FontWeight->Bold], 
+          StyleBox[
+           TagBox[
+            RowBox[{"(", "\[NoBreak]", GridBox[{
+               {
+                TagBox[
+                 InterpretationBox[
+                  StyleBox["\<\"1.455\"\>",
+                   ShowStringCharacters->False],
+                  1.4545454545454545454`8.,
+                  AutoDelete->True],
+                 NumberForm[#, {6, 3}]& ], 
+                TagBox[
+                 InterpretationBox[
+                  StyleBox["\<\"0.045\"\>",
+                   ShowStringCharacters->False],
+                  0.0454545454545454546`8.,
+                  AutoDelete->True],
+                 NumberForm[#, {6, 3}]& ], 
+                TagBox[
+                 InterpretationBox[
+                  StyleBox["\<\"0.523\"\>",
+                   ShowStringCharacters->False],
+                  0.5227272727272727273`8.,
+                  AutoDelete->True],
+                 NumberForm[#, {6, 3}]& ]},
+               {"0", 
+                TagBox[
+                 InterpretationBox[
+                  StyleBox["\<\"1.000\"\>",
+                   ShowStringCharacters->False],
+                  1.`8.,
+                  AutoDelete->True],
+                 NumberForm[#, {6, 3}]& ], 
+                TagBox[
+                 InterpretationBox[
+                  StyleBox["\<\"0.500\"\>",
+                   ShowStringCharacters->False],
+                  0.5`8.,
+                  AutoDelete->True],
+                 NumberForm[#, {6, 3}]& ]},
+               {
+                TagBox[
+                 InterpretationBox[
+                  StyleBox["\<\"0.409\"\>",
+                   ShowStringCharacters->False],
+                  0.4090909090909090909`8.,
+                  AutoDelete->True],
+                 NumberForm[#, {6, 3}]& ], 
+                TagBox[
+                 InterpretationBox[
+                  StyleBox["\<\"0.591\"\>",
+                   ShowStringCharacters->False],
+                  0.5909090909090909091`8.,
+                  AutoDelete->True],
+                 NumberForm[#, {6, 3}]& ], 
+                TagBox[
+                 InterpretationBox[
+                  StyleBox["\<\"1.295\"\>",
+                   ShowStringCharacters->False],
+                  1.2954545454545454546`8.,
+                  AutoDelete->True],
+                 NumberForm[#, {6, 3}]& ]}
+              },
+              
+              GridBoxAlignment->{
+               "Columns" -> {{Center}}, "Rows" -> {{Baseline}}},
+              GridBoxSpacings->{"Columns" -> {
+                  Offset[0.27999999999999997`], {
+                   Offset[0.7]}, 
+                  Offset[0.27999999999999997`]}, "Rows" -> {
+                  Offset[0.2], {
+                   Offset[0.4]}, 
+                  Offset[0.2]}}], "\[NoBreak]", ")"}],
+            Function[BoxForm`e$, 
+             MatrixForm[BoxForm`e$]]],
+           StripOnInput->False,
+           FontFamily->"Arial",
+           FontSize->11], 
+          StyleBox["\<\"S\"\>",
+           StripOnInput->False,
+           FontWeight->Bold], 
+          StyleBox[
+           TagBox[
+            RowBox[{"(", "\[NoBreak]", GridBox[{
+               {
+                TagBox[
+                 InterpretationBox[
+                  StyleBox["\<\"0.667\"\>",
+                   ShowStringCharacters->False],
+                  0.6666666666666666667`8.,
+                  AutoDelete->True],
+                 NumberForm[#, {6, 3}]& ], 
+                TagBox[
+                 InterpretationBox[
+                  StyleBox["\<\"-0.802\"\>",
+                   ShowStringCharacters->False],
+                  -0.8017837257372731541`8.,
+                  AutoDelete->True],
+                 NumberForm[#, {6, 3}]& ], 
+                TagBox[
+                 InterpretationBox[
+                  StyleBox["\<\"-0.333\"\>",
+                   ShowStringCharacters->False],
+                  -0.3333333333333333333`8.,
+                  AutoDelete->True],
+                 NumberForm[#, {6, 3}]& ]},
+               {
+                TagBox[
+                 InterpretationBox[
+                  StyleBox["\<\"0.333\"\>",
+                   ShowStringCharacters->False],
+                  0.3333333333333333333`8.,
+                  AutoDelete->True],
+                 NumberForm[#, {6, 3}]& ], 
+                TagBox[
+                 InterpretationBox[
+                  StyleBox["\<\"0.535\"\>",
+                   ShowStringCharacters->False],
+                  0.5345224838248487694`8.,
+                  AutoDelete->True],
+                 NumberForm[#, {6, 3}]& ], 
+                TagBox[
+                 InterpretationBox[
+                  StyleBox["\<\"-0.667\"\>",
+                   ShowStringCharacters->False],
+                  -0.6666666666666666667`8.,
+                  AutoDelete->True],
+                 NumberForm[#, {6, 3}]& ]},
+               {
+                TagBox[
+                 InterpretationBox[
+                  StyleBox["\<\"0.667\"\>",
+                   ShowStringCharacters->False],
+                  0.6666666666666666667`8.,
+                  AutoDelete->True],
+                 NumberForm[#, {6, 3}]& ], 
+                TagBox[
+                 InterpretationBox[
+                  StyleBox["\<\"0.267\"\>",
+                   ShowStringCharacters->False],
+                  0.2672612419124243847`8.,
+                  AutoDelete->True],
+                 NumberForm[#, {6, 3}]& ], 
+                TagBox[
+                 InterpretationBox[
+                  StyleBox["\<\"0.667\"\>",
+                   ShowStringCharacters->False],
+                  0.6666666666666666667`8.,
+                  AutoDelete->True],
+                 NumberForm[#, {6, 3}]& ]}
+              },
+              
+              GridBoxAlignment->{
+               "Columns" -> {{Center}}, "Rows" -> {{Baseline}}},
+              GridBoxSpacings->{"Columns" -> {
+                  Offset[0.27999999999999997`], {
+                   Offset[0.7]}, 
+                  Offset[0.27999999999999997`]}, "Rows" -> {
+                  Offset[0.2], {
+                   Offset[0.4]}, 
+                  Offset[0.2]}}], "\[NoBreak]", ")"}],
+            Function[BoxForm`e$, 
+             MatrixForm[BoxForm`e$]]],
+           StripOnInput->False,
+           FontFamily->"Arial",
+           FontSize->11], 
+          StyleBox["\<\"lambda\"\>",
+           StripOnInput->False,
+           FontWeight->Bold], 
+          StyleBox[
+           TagBox[
+            RowBox[{"(", "\[NoBreak]", GridBox[{
+               {
+                TagBox[
+                 InterpretationBox[
+                  StyleBox["\<\"2.000\"\>",
+                   ShowStringCharacters->False],
+                  2.`8.,
+                  AutoDelete->True],
+                 NumberForm[#, {6, 3}]& ]},
+               {
+                TagBox[
+                 InterpretationBox[
+                  StyleBox["\<\"1.250\"\>",
+                   ShowStringCharacters->False],
+                  1.25`8.,
+                  AutoDelete->True],
+                 NumberForm[#, {6, 3}]& ]},
+               {
+                TagBox[
+                 InterpretationBox[
+                  StyleBox["\<\"0.500\"\>",
+                   ShowStringCharacters->False],
+                  0.5`8.,
+                  AutoDelete->True],
+                 NumberForm[#, {6, 3}]& ]}
+              },
+              
+              GridBoxAlignment->{
+               "Columns" -> {{Center}}, "Rows" -> {{Baseline}}},
+              GridBoxSpacings->{"Columns" -> {
+                  Offset[0.27999999999999997`], {
+                   Offset[0.7]}, 
+                  Offset[0.27999999999999997`]}, "Rows" -> {
+                  Offset[0.2], {
+                   Offset[0.4]}, 
+                  Offset[0.2]}}], "\[NoBreak]", ")"}],
+            Function[BoxForm`e$, 
+             MatrixForm[BoxForm`e$]]],
+           StripOnInput->False,
+           FontFamily->"Arial",
+           FontSize->11]}
+        },
+        AutoDelete->False,
+        GridBoxAlignment->{"Columns" -> {{Center}}},
+        GridBoxItemSize->{"Columns" -> {{Automatic}}, "Rows" -> {{Automatic}}},
+        GridBoxSpacings->{"Columns" -> {{1.1}}, "Rows" -> {{0.6}}}],
+       "Grid"]},
+     {
+      StyleBox["\<\"The input directions are normalized but not orthogonal. \
+Components use S^-1 e_i; they are not perpendicular projections.\"\>",
+       StripOnInput->False,
+       LineColor->GrayLevel[0.32],
+       FrontFaceColor->GrayLevel[0.32],
+       BackFaceColor->GrayLevel[0.32],
+       GraphicsColor->GrayLevel[0.32],
+       FontSize->11,
+       FontColor->GrayLevel[0.32]]},
+     {
+      TagBox[GridBox[{
+         {
+          StyleBox["\<\"Iteration k\"\>",
+           StripOnInput->False,
+           FontWeight->Bold], 
+          SliderBox[Dynamic[$CellContext`iteration$$, 
+            Function[$CellContext`value$, $CellContext`iteration$$ = Clip[
+               Round[$CellContext`value$], {0, 
+                <|
+                "S" -> {{
+                   0.666666666666666666666666666666666666666666666666666666666\
+666666666666666666666666666666666666667`76., \
+-0.801783725737273154053660442639260564662004244524012917065088314425721819208\
+629791709316406113082`76., \
+-0.333333333333333333333333333333333333333333333333333333333333333333333333333\
+333333333333333333333`76.}, {
+                   0.333333333333333333333333333333333333333333333333333333333\
+333333333333333333333333333333333333333`76., 
+                    0.53452248382484876936910696175950704310800282968267527804\
+3392209617147879472419861139544270742054`76., \
+-0.666666666666666666666666666666666666666666666666666666666666666666666666666\
+666666666666666666667`76.}, {
+                   0.666666666666666666666666666666666666666666666666666666666\
+666666666666666666666666666666666666667`76., 
+                    0.26726124191242438468455348087975352155400141484133763902\
+1696104808573939736209930569772135371027`76., 
+                    0.66666666666666666666666666666666666666666666666666666666\
+6666666666666666666666666666666666666667`76.}}, 
+                 "InverseS" -> {{
+                   0.545454545454545454545454545454545454545454545454545454545\
+454545454545454545454545454545454545454`76., 
+                    0.45454545454545454545454545454545454545454545454545454545\
+4545454545454545454545454545454545454546`76., 
+                    0.72727272727272727272727272727272727272727272727272727272\
+7272727272727272727272727272727272727272`76.}, \
+{-0.68030134304980752465159067860300896395563996505067762660068099405818821023\
+7625277813965435489887`76., 
+                    0.68030134304980752465159067860300896395563996505067762660\
+0680994058188210237625277813965435489887`76., 
+                    0.34015067152490376232579533930150448197781998252533881330\
+0340497029094105118812638906982717744944`76.}, \
+{-0.27272727272727272727272727272727272727272727272727272727272727272727272727\
+2727272727272727272728`76., \
+-0.727272727272727272727272727272727272727272727272727272727272727272727272727\
+272727272727272727272`76., 
+                    0.63636363636363636363636363636363636363636363636363636363\
+6363636363636363636363636363636363636363`76.}}, 
+                 "Eigenvalues" -> {2.`76., 1.25`76., 0.5`76.}, 
+                 "A" -> {{
+                   1.454545454545454545454545454545454545454545454545454545454\
+545454545454545454545454545454545454545`75.52287874528032, 
+                    0.04545454545454545454545454545454545454545454545454545454\
+5454545454545454545454545454545454545455`74.03151705144606, 
+                    0.52272727272727272727272727272727272727272727272727272727\
+2727272727272727272727272727272727272727`75.0898862294811}, {
+                   0``75.56427143043855, 1.`75.52287874528034, 
+                    0.5`75.25606285014746}, {
+                   0.409090909090909090909090909090909090909090909090909090909\
+09090909090909090909090909090909090909`75.11539341870207, 
+                    0.59090909090909090909090909090909090909090909090909090909\
+090909090909090909090909090909090909091`75.26268500358776, 
+                    1.29545454545454545454545454545454545454545454545454545454\
+5454545454545454545454545454545454545454`75.52287874528032}}, "MaxIterations" -> 
+                 40, "WorkingPrecision" -> 76, "OrthogonalQ" -> False, 
+                 "ZoomLogMaximum" -> 15|>["MaxIterations"]}]]], {0, 40, 1},
+           ImageSize->380], 
+          DynamicBox[ToBoxes[
+            Round[$CellContext`iteration$$], StandardForm],
+           ImageSizeCache->{17., {1., 11.}}]},
+         {
+          StyleBox["\<\"Zoom in / out\"\>",
+           StripOnInput->False,
+           FontWeight->Bold], 
+          SliderBox[Dynamic[$CellContext`zoomLog$$], {-3., 15, 0.02},
+           ImageSize->380], 
+          DynamicBox[ToBoxes[
+            Row[{
+              $CellContext`basisPowerNumber[
+              10^SetPrecision[$CellContext`zoomLog$$, 30]], "x"}], 
+            StandardForm],
+           ImageSizeCache->{74., {1., 15.}}]}
+        },
+        AutoDelete->False,
+        GridBoxAlignment->{"Columns" -> {{Left}}},
+        GridBoxItemSize->{"Columns" -> {{Automatic}}, "Rows" -> {{Automatic}}},
+        GridBoxSpacings->{"Columns" -> {{1.2}}, "Rows" -> {{0.7}}}],
+       "Grid"]},
+     {
+      TemplateBox[{
+        CheckboxBox[
+         Dynamic[
+          Part[$CellContext`visible$$, 1]]], 
+        StyleBox["\" A^k e1    \"", 
+         RGBColor[0.12, 0.36, 0.86], Bold, StripOnInput -> False], 
+        CheckboxBox[
+         Dynamic[
+          Part[$CellContext`visible$$, 2]]], 
+        StyleBox["\" A^k e2    \"", 
+         RGBColor[0.87, 0.39, 0.1], Bold, StripOnInput -> False], 
+        CheckboxBox[
+         Dynamic[
+          Part[$CellContext`visible$$, 3]]], 
+        StyleBox["\" A^k e3        \"", 
+         RGBColor[0.05, 0.56, 0.39], Bold, StripOnInput -> False], 
+        CheckboxBox[
+         Dynamic[$CellContext`showQR$$]], 
+        StyleBox["\" Show Q in A^k = Q R\"", 
+         RGBColor[0.56, 0.17, 0.69], Bold, StripOnInput -> False]},
+       "RowDefault"]},
+     {
+      TemplateBox[{"\"Eigenbasis components: \"", 
+        PopupMenuBox[
+         Dynamic[$CellContext`componentChoice$$], {
+         0 -> "\"Off\"", 1 -> "\"e1 only\"", 2 -> "\"e2 only\"", 3 -> 
+          "\"e3 only\"", 4 -> "\"All visible vectors\""}], 
+        TemplateBox[{20}, "Spacer1"], 
+        ButtonBox[
+        "\"Fit vectors\"", ButtonFunction :> ($CellContext`zoomLog$$ = 0.), 
+         Appearance -> Automatic, Evaluator -> Automatic, Method -> 
+         "Preemptive"], 
+        TemplateBox[{8}, "Spacer1"], 
+        ButtonBox[
+        "\"Unit scale\"", ButtonFunction :> 
+         Module[{$CellContext`st$, $CellContext`active$, \
+$CellContext`vectors$, $CellContext`parts$, $CellContext`selected$, \
+$CellContext`rad$}, $CellContext`st$ = $CellContext`basisPowerState[<|
+              "S" -> {{
+                 0.66666666666666666666666666666666666666666666666666666666666\
+6666666666666666666666666666666666667`76., \
+-0.801783725737273154053660442639260564662004244524012917065088314425721819208\
+629791709316406113082`76., \
+-0.333333333333333333333333333333333333333333333333333333333333333333333333333\
+333333333333333333333`76.}, {
+                 0.33333333333333333333333333333333333333333333333333333333333\
+3333333333333333333333333333333333333`76., 
+                  0.5345224838248487693691069617595070431080028296826752780433\
+92209617147879472419861139544270742054`76., \
+-0.666666666666666666666666666666666666666666666666666666666666666666666666666\
+666666666666666666667`76.}, {
+                 0.66666666666666666666666666666666666666666666666666666666666\
+6666666666666666666666666666666666667`76., 
+                  0.2672612419124243846845534808797535215540014148413376390216\
+96104808573939736209930569772135371027`76., 
+                  0.6666666666666666666666666666666666666666666666666666666666\
+66666666666666666666666666666666666667`76.}}, 
+               "InverseS" -> {{
+                 0.54545454545454545454545454545454545454545454545454545454545\
+4545454545454545454545454545454545454`76., 
+                  0.4545454545454545454545454545454545454545454545454545454545\
+45454545454545454545454545454545454546`76., 
+                  0.7272727272727272727272727272727272727272727272727272727272\
+72727272727272727272727272727272727272`76.}, \
+{-0.68030134304980752465159067860300896395563996505067762660068099405818821023\
+7625277813965435489887`76., 
+                  0.6803013430498075246515906786030089639556399650506776266006\
+80994058188210237625277813965435489887`76., 
+                  0.3401506715249037623257953393015044819778199825253388133003\
+40497029094105118812638906982717744944`76.}, \
+{-0.27272727272727272727272727272727272727272727272727272727272727272727272727\
+2727272727272727272728`76., \
+-0.727272727272727272727272727272727272727272727272727272727272727272727272727\
+272727272727272727272`76., 
+                  0.6363636363636363636363636363636363636363636363636363636363\
+63636363636363636363636363636363636363`76.}}, 
+               "Eigenvalues" -> {2.`76., 1.25`76., 0.5`76.}, 
+               "A" -> {{
+                 1.45454545454545454545454545454545454545454545454545454545454\
+5454545454545454545454545454545454545`75.52287874528032, 
+                  0.0454545454545454545454545454545454545454545454545454545454\
+54545454545454545454545454545454545455`74.03151705144606, 
+                  0.5227272727272727272727272727272727272727272727272727272727\
+27272727272727272727272727272727272727`75.0898862294811}, {
+                 0``75.56427143043855, 1.`75.52287874528034, 
+                  0.5`75.25606285014746}, {
+                 0.40909090909090909090909090909090909090909090909090909090909\
+090909090909090909090909090909090909`75.11539341870207, 
+                  0.5909090909090909090909090909090909090909090909090909090909\
+0909090909090909090909090909090909091`75.26268500358776, 
+                  1.2954545454545454545454545454545454545454545454545454545454\
+54545454545454545454545454545454545454`75.52287874528032}}, "MaxIterations" -> 
+               40, "WorkingPrecision" -> 76, "OrthogonalQ" -> False, 
+               "ZoomLogMaximum" -> 15|>, 
+              Round[$CellContext`iteration$$]]; $CellContext`active$ = 
+            Select[
+              Range[3], TrueQ[
+               
+               Part[$CellContext`visible$$, #]]& ]; $CellContext`parts$ = \
+$CellContext`basisPowerComponents[<|
+              "S" -> {{
+                 0.66666666666666666666666666666666666666666666666666666666666\
+6666666666666666666666666666666666667`76., \
+-0.801783725737273154053660442639260564662004244524012917065088314425721819208\
+629791709316406113082`76., \
+-0.333333333333333333333333333333333333333333333333333333333333333333333333333\
+333333333333333333333`76.}, {
+                 0.33333333333333333333333333333333333333333333333333333333333\
+3333333333333333333333333333333333333`76., 
+                  0.5345224838248487693691069617595070431080028296826752780433\
+92209617147879472419861139544270742054`76., \
+-0.666666666666666666666666666666666666666666666666666666666666666666666666666\
+666666666666666666667`76.}, {
+                 0.66666666666666666666666666666666666666666666666666666666666\
+6666666666666666666666666666666666667`76., 
+                  0.2672612419124243846845534808797535215540014148413376390216\
+96104808573939736209930569772135371027`76., 
+                  0.6666666666666666666666666666666666666666666666666666666666\
+66666666666666666666666666666666666667`76.}}, 
+               "InverseS" -> {{
+                 0.54545454545454545454545454545454545454545454545454545454545\
+4545454545454545454545454545454545454`76., 
+                  0.4545454545454545454545454545454545454545454545454545454545\
+45454545454545454545454545454545454546`76., 
+                  
+                  0.7272727272727272727272727272727272727272727272727272727272\
+72727272727272727272727272727272727272`76.}, \
+{-0.68030134304980752465159067860300896395563996505067762660068099405818821023\
+7625277813965435489887`76., 
+                  0.6803013430498075246515906786030089639556399650506776266006\
+80994058188210237625277813965435489887`76., 
+                  0.3401506715249037623257953393015044819778199825253388133003\
+40497029094105118812638906982717744944`76.}, \
+{-0.27272727272727272727272727272727272727272727272727272727272727272727272727\
+2727272727272727272728`76., \
+-0.727272727272727272727272727272727272727272727272727272727272727272727272727\
+272727272727272727272`76., 
+                  0.6363636363636363636363636363636363636363636363636363636363\
+63636363636363636363636363636363636363`76.}}, 
+               "Eigenvalues" -> {2.`76., 1.25`76., 0.5`76.}, 
+               "A" -> {{
+                 1.45454545454545454545454545454545454545454545454545454545454\
+5454545454545454545454545454545454545`75.52287874528032, 
+                  0.0454545454545454545454545454545454545454545454545454545454\
+54545454545454545454545454545454545455`74.03151705144606, 
+                  0.5227272727272727272727272727272727272727272727272727272727\
+27272727272727272727272727272727272727`75.0898862294811}, {
+                 0``75.56427143043855, 1.`75.52287874528034, 
+                  0.5`75.25606285014746}, {
+                 0.40909090909090909090909090909090909090909090909090909090909\
+090909090909090909090909090909090909`75.11539341870207, 
+                  0.5909090909090909090909090909090909090909090909090909090909\
+0909090909090909090909090909090909091`75.26268500358776, 
+                  1.2954545454545454545454545454545454545454545454545454545454\
+54545454545454545454545454545454545454`75.52287874528032}}, "MaxIterations" -> 
+               40, "WorkingPrecision" -> 76, "OrthogonalQ" -> False, 
+               "ZoomLogMaximum" -> 15|>, 
+              Round[$CellContext`iteration$$]]; $CellContext`selected$ = 
+            Which[$CellContext`componentChoice$$ == 4, $CellContext`active$, 
+              
+              MemberQ[$CellContext`active$, $CellContext`componentChoice$$], \
+{$CellContext`componentChoice$$}, True, {}]; $CellContext`vectors$ = 
+            Join[{{1, 1, 1}}, 
+              Part[
+               Transpose[
+                $CellContext`st$["Power"]], $CellContext`active$], 
+              Flatten[
+               Part[$CellContext`parts$, $CellContext`selected$], 
+               1]]; $CellContext`rad$ = 1.4 Max[
+               Abs[
+                Flatten[$CellContext`vectors$]]]; $CellContext`zoomLog$$ = N[
+              Log[10, $CellContext`rad$/1.4]]], Appearance -> Automatic, 
+         Evaluator -> Automatic, Method -> "Preemptive"], 
+        TemplateBox[{8}, "Spacer1"], 
+        ButtonBox[
+        "\"Reset rotation\"", 
+         ButtonFunction :> ($CellContext`cameraPoint$$ = {2.5, -3.4, 
+            2.2}; $CellContext`cameraVertical$$ = {0., 0., 
+            1.}; $CellContext`cameraAngle$$ = 10 Degree), Appearance -> 
+         Automatic, Evaluator -> Automatic, Method -> "Preemptive"]},
+       "RowDefault"]},
+     {
+      DynamicBox[ToBoxes[
+        $CellContext`basisPowerPlot[<|
+         "S" -> {{
+            0.6666666666666666666666666666666666666666666666666666666666666666\
+66666666666666666666666666666667`76., \
+-0.801783725737273154053660442639260564662004244524012917065088314425721819208\
+629791709316406113082`76., \
+-0.333333333333333333333333333333333333333333333333333333333333333333333333333\
+333333333333333333333`76.}, {
+            0.3333333333333333333333333333333333333333333333333333333333333333\
+33333333333333333333333333333333`76., 
+             0.534522483824848769369106961759507043108002829682675278043392209\
+617147879472419861139544270742054`76., \
+-0.666666666666666666666666666666666666666666666666666666666666666666666666666\
+666666666666666666667`76.}, {
+            0.6666666666666666666666666666666666666666666666666666666666666666\
+66666666666666666666666666666667`76., 
+             0.267261241912424384684553480879753521554001414841337639021696104\
+808573939736209930569772135371027`76., 
+             0.666666666666666666666666666666666666666666666666666666666666666\
+666666666666666666666666666666667`76.}}, 
+          "InverseS" -> {{
+            0.5454545454545454545454545454545454545454545454545454545454545454\
+54545454545454545454545454545454`76., 
+             0.454545454545454545454545454545454545454545454545454545454545454\
+545454545454545454545454545454546`76., 
+             0.727272727272727272727272727272727272727272727272727272727272727\
+272727272727272727272727272727272`76.}, \
+{-0.68030134304980752465159067860300896395563996505067762660068099405818821023\
+7625277813965435489887`76., 
+             0.680301343049807524651590678603008963955639965050677626600680994\
+058188210237625277813965435489887`76., 
+             0.340150671524903762325795339301504481977819982525338813300340497\
+029094105118812638906982717744944`76.}, \
+{-0.27272727272727272727272727272727272727272727272727272727272727272727272727\
+2727272727272727272728`76., \
+-0.727272727272727272727272727272727272727272727272727272727272727272727272727\
+272727272727272727272`76., 
+             0.636363636363636363636363636363636363636363636363636363636363636\
+363636363636363636363636363636363`76.}}, 
+          "Eigenvalues" -> {2.`76., 1.25`76., 0.5`76.}, 
+          "A" -> {{
+            1.4545454545454545454545454545454545454545454545454545454545454545\
+45454545454545454545454545454545`75.52287874528032, 
+             0.045454545454545454545454545454545454545454545454545454545454545\
+454545454545454545454545454545455`74.03151705144606, 
+             0.522727272727272727272727272727272727272727272727272727272727272\
+727272727272727272727272727272727`75.0898862294811}, {
+            0``75.56427143043855, 1.`75.52287874528034, 
+             0.5`75.25606285014746}, {
+            0.4090909090909090909090909090909090909090909090909090909090909090\
+9090909090909090909090909090909`75.11539341870207, 
+             0.590909090909090909090909090909090909090909090909090909090909090\
+90909090909090909090909090909091`75.26268500358776, 
+             1.295454545454545454545454545454545454545454545454545454545454545\
+454545454545454545454545454545454`75.52287874528032}}, "MaxIterations" -> 40, 
+          "WorkingPrecision" -> 76, "OrthogonalQ" -> False, "ZoomLogMaximum" -> 
+          15|>, 
+         $CellContext`basisPowerState[<|
+          "S" -> {{
+             0.666666666666666666666666666666666666666666666666666666666666666\
+666666666666666666666666666666667`76., \
+-0.801783725737273154053660442639260564662004244524012917065088314425721819208\
+629791709316406113082`76., \
+-0.333333333333333333333333333333333333333333333333333333333333333333333333333\
+333333333333333333333`76.}, {
+             0.333333333333333333333333333333333333333333333333333333333333333\
+333333333333333333333333333333333`76., 
+              0.53452248382484876936910696175950704310800282968267527804339220\
+9617147879472419861139544270742054`76., \
+-0.666666666666666666666666666666666666666666666666666666666666666666666666666\
+666666666666666666667`76.}, {
+             0.666666666666666666666666666666666666666666666666666666666666666\
+666666666666666666666666666666667`76., 
+              0.26726124191242438468455348087975352155400141484133763902169610\
+4808573939736209930569772135371027`76., 
+              0.66666666666666666666666666666666666666666666666666666666666666\
+6666666666666666666666666666666667`76.}}, 
+           "InverseS" -> {{
+             0.545454545454545454545454545454545454545454545454545454545454545\
+454545454545454545454545454545454`76., 
+              0.45454545454545454545454545454545454545454545454545454545454545\
+4545454545454545454545454545454546`76., 
+              0.72727272727272727272727272727272727272727272727272727272727272\
+7272727272727272727272727272727272`76.}, \
+{-0.68030134304980752465159067860300896395563996505067762660068099405818821023\
+7625277813965435489887`76., 
+              0.68030134304980752465159067860300896395563996505067762660068099\
+4058188210237625277813965435489887`76., 
+              0.34015067152490376232579533930150448197781998252533881330034049\
+7029094105118812638906982717744944`76.}, \
+{-0.27272727272727272727272727272727272727272727272727272727272727272727272727\
+2727272727272727272728`76., \
+-0.727272727272727272727272727272727272727272727272727272727272727272727272727\
+272727272727272727272`76., 
+              0.63636363636363636363636363636363636363636363636363636363636363\
+6363636363636363636363636363636363`76.}}, 
+           "Eigenvalues" -> {2.`76., 1.25`76., 0.5`76.}, 
+           "A" -> {{
+             1.454545454545454545454545454545454545454545454545454545454545454\
+545454545454545454545454545454545`75.52287874528032, 
+              0.04545454545454545454545454545454545454545454545454545454545454\
+5454545454545454545454545454545455`74.03151705144606, 
+              0.52272727272727272727272727272727272727272727272727272727272727\
+2727272727272727272727272727272727`75.0898862294811}, {
+             0``75.56427143043855, 1.`75.52287874528034, 
+              0.5`75.25606285014746}, {
+             0.409090909090909090909090909090909090909090909090909090909090909\
+09090909090909090909090909090909`75.11539341870207, 
+              0.59090909090909090909090909090909090909090909090909090909090909\
+090909090909090909090909090909091`75.26268500358776, 
+              1.29545454545454545454545454545454545454545454545454545454545454\
+5454545454545454545454545454545454`75.52287874528032}}, "MaxIterations" -> 40,
+            "WorkingPrecision" -> 76, "OrthogonalQ" -> False, 
+           "ZoomLogMaximum" -> 15|>, 
+          
+          Round[$CellContext`iteration$$]], $CellContext`visible$$, \
+$CellContext`showQR$$, $CellContext`componentChoice$$, $CellContext`zoomLog$$, 
+         Dynamic[$CellContext`cameraPoint$$, 
+          
+          Function[$CellContext`value$, $CellContext`cameraPoint$$ = \
+$CellContext`value$]], 
+         Dynamic[$CellContext`cameraVertical$$, 
+          
+          Function[$CellContext`value$, $CellContext`cameraVertical$$ = \
+$CellContext`value$]], 
+         Dynamic[$CellContext`cameraAngle$$, 
+          
+          Function[$CellContext`value$, $CellContext`cameraAngle$$ = \
+$CellContext`value$]], 850], StandardForm],
+       ImageSizeCache->{1063., {406., 412.}},
+       TrackedSymbols:>{$CellContext`iteration$$, $CellContext`visible$$, \
+$CellContext`showQR$$, $CellContext`componentChoice$$, \
+$CellContext`zoomLog$$}]},
+     {
+      StyleBox["\<\"Grey lines keep the eigenvector directions visible at \
+every scale; their unit arrows have fixed mathematical length. Pale colored \
+arrows are eigenbasis components. Purple arrows are the Q columns. A line \
+ending in a dot with 'outside view' has been clipped, not shortened \
+mathematically.\"\>",
+       StripOnInput->False,
+       LineColor->GrayLevel[0.35],
+       FrontFaceColor->GrayLevel[0.35],
+       BackFaceColor->GrayLevel[0.35],
+       GraphicsColor->GrayLevel[0.35],
+       FontSize->11,
+       FontColor->GrayLevel[0.35]]},
+     {
+      StyleBox[
+       TemplateBox[{"\"At k = 0: \"", 
+         SubscriptBox["\"e\"", "\"i\""], "\" = sum_j \"", 
+         SubscriptBox["\"c\"", "\"ji\""], "\" \"", 
+         SubscriptBox["\"v\"", "\"j\""], "\".  At iteration k: \"", 
+         TemplateBox[{"\"A\"", "\"k\""}, "Superscript", SyntaxForm -> 
+          SuperscriptBox], "\" \"", 
+         SubscriptBox["\"e\"", "\"i\""], "\" = sum_j \"", 
+         SubscriptBox["\"c\"", "\"ji\""], "\" \"", 
+         TemplateBox[{
+           SubscriptBox["\"lambda\"", "\"j\""], "\"k\""}, "Superscript", 
+          SyntaxForm -> SuperscriptBox], "\" \"", 
+         SubscriptBox["\"v\"", "\"j\""], "\", where C = \"", 
+         TemplateBox[{"\"S\"", "\"-1\""}, "Superscript", SyntaxForm -> 
+          SuperscriptBox], "\".\""},
+        "RowDefault"],
+       StripOnInput->False,
+       FontSize->12]},
+     {
+      DynamicBox[ToBoxes[
+        $CellContext`basisPowerPanel[<|
+         "S" -> {{
+            0.6666666666666666666666666666666666666666666666666666666666666666\
+66666666666666666666666666666667`76., \
+-0.801783725737273154053660442639260564662004244524012917065088314425721819208\
+629791709316406113082`76., \
+-0.333333333333333333333333333333333333333333333333333333333333333333333333333\
+333333333333333333333`76.}, {
+            0.3333333333333333333333333333333333333333333333333333333333333333\
+33333333333333333333333333333333`76., 
+             0.534522483824848769369106961759507043108002829682675278043392209\
+617147879472419861139544270742054`76., \
+-0.666666666666666666666666666666666666666666666666666666666666666666666666666\
+666666666666666666667`76.}, {
+            0.6666666666666666666666666666666666666666666666666666666666666666\
+66666666666666666666666666666667`76., 
+             0.267261241912424384684553480879753521554001414841337639021696104\
+808573939736209930569772135371027`76., 
+             0.666666666666666666666666666666666666666666666666666666666666666\
+666666666666666666666666666666667`76.}}, 
+          "InverseS" -> {{
+            0.5454545454545454545454545454545454545454545454545454545454545454\
+54545454545454545454545454545454`76., 
+             0.454545454545454545454545454545454545454545454545454545454545454\
+545454545454545454545454545454546`76., 
+             0.727272727272727272727272727272727272727272727272727272727272727\
+272727272727272727272727272727272`76.}, \
+{-0.68030134304980752465159067860300896395563996505067762660068099405818821023\
+7625277813965435489887`76., 
+             0.680301343049807524651590678603008963955639965050677626600680994\
+058188210237625277813965435489887`76., 
+             0.340150671524903762325795339301504481977819982525338813300340497\
+029094105118812638906982717744944`76.}, \
+{-0.27272727272727272727272727272727272727272727272727272727272727272727272727\
+2727272727272727272728`76., \
+-0.727272727272727272727272727272727272727272727272727272727272727272727272727\
+272727272727272727272`76., 
+             0.636363636363636363636363636363636363636363636363636363636363636\
+363636363636363636363636363636363`76.}}, 
+          "Eigenvalues" -> {2.`76., 1.25`76., 0.5`76.}, 
+          "A" -> {{
+            1.4545454545454545454545454545454545454545454545454545454545454545\
+45454545454545454545454545454545`75.52287874528032, 
+             0.045454545454545454545454545454545454545454545454545454545454545\
+454545454545454545454545454545455`74.03151705144606, 
+             0.522727272727272727272727272727272727272727272727272727272727272\
+727272727272727272727272727272727`75.0898862294811}, {
+            0``75.56427143043855, 1.`75.52287874528034, 
+             0.5`75.25606285014746}, {
+            0.4090909090909090909090909090909090909090909090909090909090909090\
+9090909090909090909090909090909`75.11539341870207, 
+             0.590909090909090909090909090909090909090909090909090909090909090\
+90909090909090909090909090909091`75.26268500358776, 
+             1.295454545454545454545454545454545454545454545454545454545454545\
+454545454545454545454545454545454`75.52287874528032}}, "MaxIterations" -> 40, 
+          "WorkingPrecision" -> 76, "OrthogonalQ" -> False, "ZoomLogMaximum" -> 
+          15|>, 
+         $CellContext`basisPowerState[<|
+          "S" -> {{
+             0.666666666666666666666666666666666666666666666666666666666666666\
+666666666666666666666666666666667`76., \
+-0.801783725737273154053660442639260564662004244524012917065088314425721819208\
+629791709316406113082`76., \
+-0.333333333333333333333333333333333333333333333333333333333333333333333333333\
+333333333333333333333`76.}, {
+             0.333333333333333333333333333333333333333333333333333333333333333\
+333333333333333333333333333333333`76., 
+              0.53452248382484876936910696175950704310800282968267527804339220\
+9617147879472419861139544270742054`76., \
+-0.666666666666666666666666666666666666666666666666666666666666666666666666666\
+666666666666666666667`76.}, {
+             0.666666666666666666666666666666666666666666666666666666666666666\
+666666666666666666666666666666667`76., 
+              0.26726124191242438468455348087975352155400141484133763902169610\
+4808573939736209930569772135371027`76., 
+              0.66666666666666666666666666666666666666666666666666666666666666\
+6666666666666666666666666666666667`76.}}, 
+           "InverseS" -> {{
+             0.545454545454545454545454545454545454545454545454545454545454545\
+454545454545454545454545454545454`76., 
+              0.45454545454545454545454545454545454545454545454545454545454545\
+4545454545454545454545454545454546`76., 
+              0.72727272727272727272727272727272727272727272727272727272727272\
+7272727272727272727272727272727272`76.}, \
+{-0.68030134304980752465159067860300896395563996505067762660068099405818821023\
+7625277813965435489887`76., 
+              0.68030134304980752465159067860300896395563996505067762660068099\
+4058188210237625277813965435489887`76., 
+              0.34015067152490376232579533930150448197781998252533881330034049\
+7029094105118812638906982717744944`76.}, \
+{-0.27272727272727272727272727272727272727272727272727272727272727272727272727\
+2727272727272727272728`76., \
+-0.727272727272727272727272727272727272727272727272727272727272727272727272727\
+272727272727272727272`76., 
+              0.63636363636363636363636363636363636363636363636363636363636363\
+6363636363636363636363636363636363`76.}}, 
+           "Eigenvalues" -> {2.`76., 1.25`76., 0.5`76.}, 
+           "A" -> {{
+             1.454545454545454545454545454545454545454545454545454545454545454\
+545454545454545454545454545454545`75.52287874528032, 
+              0.04545454545454545454545454545454545454545454545454545454545454\
+5454545454545454545454545454545455`74.03151705144606, 
+              0.52272727272727272727272727272727272727272727272727272727272727\
+2727272727272727272727272727272727`75.0898862294811}, {
+             0``75.56427143043855, 1.`75.52287874528034, 
+              0.5`75.25606285014746}, {
+             0.409090909090909090909090909090909090909090909090909090909090909\
+09090909090909090909090909090909`75.11539341870207, 
+              0.59090909090909090909090909090909090909090909090909090909090909\
+090909090909090909090909090909091`75.26268500358776, 
+              1.29545454545454545454545454545454545454545454545454545454545454\
+5454545454545454545454545454545454`75.52287874528032}}, "MaxIterations" -> 40,
+            "WorkingPrecision" -> 76, "OrthogonalQ" -> False, 
+           "ZoomLogMaximum" -> 15|>, 
+          Round[$CellContext`iteration$$]], $CellContext`showQR$$], 
+        StandardForm],
+       ImageSizeCache->{739., {55., 63.}},
+       TrackedSymbols:>{$CellContext`iteration$$, $CellContext`showQR$$}]}
+    },
+    DefaultBaseStyle->"Column",
+    GridBoxAlignment->{"Columns" -> {{Center}}},
+    GridBoxItemSize->{"Columns" -> {{Automatic}}, "Rows" -> {{Automatic}}},
+    GridBoxSpacings->{"Columns" -> {{Automatic}}, "Rows" -> {{1.}}}],
+   "Column"],
+  BaseStyle->{FontFamily -> "Arial", FontSize -> 12},
+  DynamicModuleValues:>{},
+  Initialization:>{
+   Attributes[$CellContext`value$] = {
+     Temporary}, $CellContext`basisPowerNumber[
+      Pattern[$CellContext`x, 
+       Blank[]]] := Which[
+      TrueQ[$CellContext`x == 0], 0, 
+      Inequality[10^(-3), LessEqual, 
+       Abs[$CellContext`x], Less, 10^4], 
+      NumberForm[
+       N[$CellContext`x, 8], {6, 3}], True, 
+      ScientificForm[
+       N[$CellContext`x, 8], 3]], Attributes[$CellContext`st$] = {Temporary}, 
+    Attributes[$CellContext`active$] = {Temporary}, 
+    Attributes[$CellContext`vectors$] = {Temporary}, 
+    Attributes[$CellContext`parts$] = {Temporary}, 
+    Attributes[$CellContext`selected$] = {Temporary}, 
+    Attributes[$CellContext`rad$] = {Temporary}, $CellContext`basisPowerState[
+     
+      Pattern[$CellContext`data, 
+       Blank[]], 
+      Pattern[$CellContext`k, 
+       Blank[Integer]]] := 
+    Module[{$CellContext`power, $CellContext`qRows, $CellContext`r, \
+$CellContext`q, $CellContext`signs, $CellContext`scale, $CellContext`weights, \
+$CellContext`n = Clip[$CellContext`k, {0, 
+          $CellContext`data["MaxIterations"]}]}, $CellContext`weights = 
+       If[$CellContext`n == 0, {1, 1, 
+         1}, $CellContext`data[
+          "Eigenvalues"]^$CellContext`n]; $CellContext`power = 
+       If[$CellContext`n == 0, 
+         N[
+          IdentityMatrix[3], 
+          $CellContext`data["WorkingPrecision"]], 
+         Dot[
+          $CellContext`data["S"], 
+          DiagonalMatrix[$CellContext`weights], 
+          $CellContext`data["InverseS"]]]; $CellContext`scale = Max[
+         Abs[
+          Flatten[$CellContext`power]]]; If[
+        TrueQ[$CellContext`scale == 0], $CellContext`q = 
+         IdentityMatrix[
+          3]; $CellContext`r = $CellContext`power, {$CellContext`qRows, \
+$CellContext`r} = 
+         QRDecomposition[$CellContext`power/$CellContext`scale]; \
+$CellContext`q = 
+         Transpose[$CellContext`qRows]; $CellContext`r = $CellContext`scale \
+$CellContext`r; $CellContext`signs = Table[
+           If[
+            TrueQ[
+            Part[$CellContext`r, $CellContext`j, $CellContext`j] < 0], -1, 
+            1], {$CellContext`j, 3}]; $CellContext`q = Dot[$CellContext`q, 
+           DiagonalMatrix[$CellContext`signs]]; $CellContext`r = Dot[
+           DiagonalMatrix[$CellContext`signs], $CellContext`r]]; <|
+       "k" -> $CellContext`n, "Power" -> $CellContext`power, 
+        "Q" -> $CellContext`q, 
+        "R" -> $CellContext`r|>], $CellContext`basisPowerComponents[
+      Pattern[$CellContext`data, 
+       Blank[]], 
+      Pattern[$CellContext`k, 
+       Blank[Integer]]] := 
+    Module[{$CellContext`weights}, $CellContext`weights = 
+       If[$CellContext`k == 0, {1, 1, 
+         1}, $CellContext`data["Eigenvalues"]^$CellContext`k]; 
+      Table[Part[$CellContext`weights, $CellContext`j] Part[
+          $CellContext`data["InverseS"], $CellContext`j, $CellContext`i] 
+        Part[
+          $CellContext`data["S"], All, $CellContext`j], {$CellContext`i, 
+         3}, {$CellContext`j, 3}]], $CellContext`basisPowerPlot[
+      Pattern[$CellContext`data, 
+       Blank[]], 
+      Pattern[$CellContext`state, 
+       Blank[]], 
+      Pattern[$CellContext`visible, 
+       Blank[]], 
+      Pattern[$CellContext`showQR, 
+       Blank[]], 
+      Pattern[$CellContext`componentChoice, 
+       Blank[]], 
+      Pattern[$CellContext`zoomLog, 
+       Blank[]], 
+      Pattern[$CellContext`cameraPoint, 
+       Blank[]], 
+      Pattern[$CellContext`cameraVertical, 
+       Blank[]], 
+      Pattern[$CellContext`cameraAngle, 
+       Blank[]], 
+      Optional[
+       Pattern[$CellContext`imageSize, 
+        Blank[]], 850]] := 
+    Module[{$CellContext`colors, $CellContext`qColor, $CellContext`s, \
+$CellContext`columns, $CellContext`components, $CellContext`active, \
+$CellContext`relevant, $CellContext`baseRadius, $CellContext`radius, \
+$CellContext`eigGuides, $CellContext`componentObjects, \
+$CellContext`vectorObjects, $CellContext`qObjects, $CellContext`selected, \
+$CellContext`direction, $CellContext`k, $CellContext`componentLabels, \
+$CellContext`labelOffsets}, $CellContext`colors = {
+         RGBColor[0.12, 0.36, 0.86], 
+         RGBColor[0.87, 0.39, 0.1], 
+         RGBColor[0.05, 0.56, 0.39]}; $CellContext`qColor = 
+       RGBColor[0.56, 0.17, 0.69]; $CellContext`s = $CellContext`data[
+        "S"]; $CellContext`k = $CellContext`state["k"]; $CellContext`columns = 
+       Transpose[
+         $CellContext`state[
+         "Power"]]; $CellContext`components = \
+$CellContext`basisPowerComponents[$CellContext`data, $CellContext`k]; \
+$CellContext`active = Select[
+         Range[3], TrueQ[
+          Part[$CellContext`visible, #]]& ]; $CellContext`selected = 
+       Which[$CellContext`componentChoice == 
+         0, {}, $CellContext`componentChoice == 4, $CellContext`active, 
+         MemberQ[$CellContext`active, $CellContext`componentChoice], \
+{$CellContext`componentChoice}, True, {}]; $CellContext`relevant = 
+       Join[{{1, 1, 1}}, 
+         Part[$CellContext`columns, $CellContext`active], 
+         Flatten[
+          Part[$CellContext`components, $CellContext`selected], 
+          1]]; $CellContext`baseRadius = 1.4 Max[
+          Abs[
+           
+           Flatten[$CellContext`relevant]]]; $CellContext`radius = \
+$CellContext`baseRadius/10^
+        SetPrecision[$CellContext`zoomLog, 30]; $CellContext`labelOffsets = {{
+        10, 12}, {10, -13}, {10, 30}}; $CellContext`eigGuides = 
+       Table[$CellContext`direction = N[
+            Part[$CellContext`s, All, $CellContext`j]]; {
+           Directive[
+            GrayLevel[0.56], 
+            Opacity[0.55], 
+            AbsoluteThickness[1.2], 
+            AbsoluteDashing[None]], 
+           Line[{(-0.83) ($CellContext`direction/Max[
+               Abs[$CellContext`direction]]), 0.83 ($CellContext`direction/Max[
+               Abs[$CellContext`direction]])}], 
+           Text[
+            Style[
+             Row[{
+               Subscript["v", $CellContext`j], " direction"}], 11, 
+             GrayLevel[0.32], Background -> White], 
+            $CellContext`basisPowerLabelPoint[0.77 ($CellContext`direction/Max[
+               Abs[$CellContext`direction]]), {-10, -7 - 
+              12 ($CellContext`j - 1)}], {1, 0}], 
+           $CellContext`basisPowerArrow[
+            Part[$CellContext`s, All, $CellContext`j], $CellContext`radius, 
+            GrayLevel[0.3], 
+            If[0.03 < 1/$CellContext`radius < 1, 
+             Subscript["v", $CellContext`j], None], 0.9, 1.8, 0.011, {-14, 
+            10}]}, {$CellContext`j, 3}]; $CellContext`componentLabels = 
+       Length[$CellContext`selected] == 1; $CellContext`componentObjects = 
+       Table[
+         Table[{
+           $CellContext`basisPowerArrow[
+            
+            Part[$CellContext`components, $CellContext`i, $CellContext`j], \
+$CellContext`radius, 
+            Part[$CellContext`colors, $CellContext`i], 
+            If[$CellContext`componentLabels, 
+             Row[{"component ", $CellContext`j}], None], 0.4, 1.5, 0.009, {
+            8, -18 - 11 $CellContext`j}], 
+           If[$CellContext`componentLabels, 
+            
+            Module[{$CellContext`p = 
+              Part[$CellContext`components, $CellContext`i, $CellContext`j], \
+$CellContext`w = 
+              Part[$CellContext`columns, $CellContext`i], $CellContext`ext}, \
+$CellContext`ext = Max[
+                Abs[
+                 Flatten[{$CellContext`p, $CellContext`w}]]]; If[
+               TrueQ[$CellContext`ext/$CellContext`radius < 0.8], {
+                Directive[
+                 Part[$CellContext`colors, $CellContext`i], 
+                 Opacity[0.18], 
+                 AbsoluteThickness[1], 
+                 AbsoluteDashing[None]], 
+                Line[
+                 
+                 N[{$CellContext`p, $CellContext`w}/$CellContext`radius]]}, \
+{}]], {}]}, {$CellContext`j, 
+           3}], {$CellContext`i, $CellContext`selected}]; \
+$CellContext`vectorObjects = Table[
+         $CellContext`basisPowerArrow[
+          Part[$CellContext`columns, $CellContext`i], $CellContext`radius, 
+          Part[$CellContext`colors, $CellContext`i], 
+          Row[{
+            Superscript["A", $CellContext`k], " ", 
+            Subscript["e", $CellContext`i]}], 1., 3., 0.014, 
+          
+          Part[$CellContext`labelOffsets, $CellContext`i]], {$CellContext`i, \
+$CellContext`active}]; $CellContext`qObjects = If[
+         TrueQ[$CellContext`showQR], 
+         Table[
+          $CellContext`basisPowerArrow[
+           Part[
+            $CellContext`state["Q"], 
+            All, $CellContext`i], $CellContext`radius, $CellContext`qColor, 
+           Subscript["q", $CellContext`i], 0.95, 2.3, 
+           0.012, {-48, -14 + 19 $CellContext`i}], {$CellContext`i, 3}], {}]; 
+      Graphics3D[{
+         $CellContext`basisPowerAxes[$CellContext`radius], \
+$CellContext`eigGuides, $CellContext`componentObjects, \
+$CellContext`vectorObjects, $CellContext`qObjects}, Axes -> False, Boxed -> 
+        False, PlotRange -> ConstantArray[{-1., 1.}, 3], PlotRangePadding -> 
+        None, ImagePadding -> {{35, 65}, {30, 25}}, 
+        ViewCenter -> {1/2, 1/2, 1/2}, ViewPoint -> $CellContext`cameraPoint, 
+        ViewVertical -> $CellContext`cameraVertical, 
+        ViewAngle -> $CellContext`cameraAngle, ViewProjection -> 
+        "Perspective", SphericalRegion -> False, Lighting -> "Neutral", 
+        Background -> White, ImageSize -> {$CellContext`imageSize, 
+          Round[0.77 $CellContext`imageSize]}, PlotLabel -> Style[
+          Row[{
+            Superscript["A", $CellContext`k], " I: columns ", 
+            Superscript["A", $CellContext`k], " ", 
+            Subscript["e", "i"], "     |     zoom = ", 
+            $CellContext`basisPowerNumber[
+            10^SetPrecision[$CellContext`zoomLog, 30]], "x"}], 14, 
+          Bold]]], $CellContext`basisPowerLabelPoint[
+      Pattern[$CellContext`point, 
+       Blank[]], 
+      Pattern[$CellContext`offset, 
+       Blank[]]] := N[$CellContext`point + 0.0025 {
+         Part[$CellContext`offset, 1], Part[$CellContext`offset, 1]/2, 
+         Part[$CellContext`offset, 2]}], $CellContext`basisPowerArrow[
+      Pattern[$CellContext`vector, 
+       Blank[]], 
+      Pattern[$CellContext`radius, 
+       Blank[]], 
+      Pattern[$CellContext`color, 
+       Blank[]], 
+      Optional[
+       Pattern[$CellContext`label, 
+        Blank[]], None], 
+      Optional[
+       Pattern[$CellContext`opacity, 
+        Blank[]], 1.], 
+      Optional[
+       Pattern[$CellContext`thickness, 
+        Blank[]], 2.5], 
+      Optional[
+       Pattern[$CellContext`head, 
+        Blank[]], 0.013], 
+      Optional[
+       Pattern[$CellContext`offset, 
+        Blank[]], {10, 8}]] := 
+    Module[{$CellContext`extent, $CellContext`factor, $CellContext`tip, \
+$CellContext`clipped, $CellContext`labelObject}, $CellContext`extent = Max[
+         Abs[$CellContext`vector]]; If[
+        Or[
+         TrueQ[$CellContext`extent == 0], 
+         TrueQ[$CellContext`extent/$CellContext`radius < 10^(-6)]], 
+        Return[{}]]; $CellContext`factor = 
+       Min[1, 0.82 ($CellContext`radius/$CellContext`extent)]; \
+$CellContext`tip = 
+       N[($CellContext`factor/$CellContext`radius) $CellContext`vector]; \
+$CellContext`clipped = 
+       TrueQ[$CellContext`factor < 1]; $CellContext`labelObject = 
+       If[$CellContext`label === None, {}, 
+         Text[
+          Style[
+           If[$CellContext`clipped, 
+            Row[{$CellContext`label, " (outside view)"}], $CellContext`label],
+            12, $CellContext`color, Background -> White], 
+          $CellContext`basisPowerLabelPoint[$CellContext`tip, \
+$CellContext`offset], {-1, 0}]]; {
+        Directive[$CellContext`color, 
+         Opacity[$CellContext`opacity], 
+         AbsoluteDashing[None], 
+         AbsoluteThickness[$CellContext`thickness]], 
+        If[$CellContext`clipped, {
+          Line[{{0., 0., 0.}, $CellContext`tip}], 
+          PointSize[0.006], 
+          Point[$CellContext`tip]}, {
+          Arrowheads[$CellContext`head], 
+          
+          Arrow[{{0., 0., 
+            0.}, $CellContext`tip}]}], $CellContext`labelObject}], \
+$CellContext`basisPowerAxes[
+      Pattern[$CellContext`radius, 
+       Blank[]]] := 
+    Module[{$CellContext`step, $CellContext`ticks, $CellContext`objects, \
+$CellContext`point, $CellContext`other}, $CellContext`step = 10^Floor[
+          Log[10, $CellContext`radius]]; 
+      If[$CellContext`step/$CellContext`radius > 
+        0.65, $CellContext`step = $CellContext`step/2]; $CellContext`ticks = 
+       Select[Range[-4, 4] $CellContext`step, 
+         And[# != 0, Abs[#] < 
+          0.79 $CellContext`radius]& ]; $CellContext`objects = Table[{
+          Directive[
+           GrayLevel[0.8], 
+           AbsoluteDashing[None], 
+           AbsoluteThickness[0.8]], 
+          
+          Line[{(-0.89) UnitVector[3, $CellContext`j], 0.89 
+            UnitVector[3, $CellContext`j]}], 
+          Text[
+           Style[
+            Part[{"x", "y", "z"}, $CellContext`j], 12, 
+            GrayLevel[0.48]], 0.94 UnitVector[3, $CellContext`j]], 
+          
+          Table[$CellContext`point = 
+            N[$CellContext`t/$CellContext`radius] 
+             UnitVector[3, $CellContext`j]; $CellContext`other = UnitVector[3, 
+              If[$CellContext`j == 3, 1, 3]]; {
+             
+             Line[{$CellContext`point - 
+               0.008 $CellContext`other, $CellContext`point + 
+               0.008 $CellContext`other}], 
+             Text[
+              Style[
+               $CellContext`basisPowerNumber[$CellContext`t], 9, 
+               GrayLevel[0.57]], 
+              $CellContext`basisPowerLabelPoint[$CellContext`point, 
+               
+               If[$CellContext`j == 3, {-14, 0}, {
+                0, -12}]]]}, {$CellContext`t, $CellContext`ticks}]}, \
+{$CellContext`j, 3}]; {$CellContext`objects, 
+        GrayLevel[0.45], 
+        PointSize[0.004], 
+        Point[{0., 0., 0.}]}], $CellContext`basisPowerPanel[
+      Pattern[$CellContext`data, 
+       Blank[]], 
+      Pattern[$CellContext`state, 
+       Blank[]], 
+      Pattern[$CellContext`showQR, 
+       Blank[]]] := Column[{
+       Style[
+        Row[{
+          Superscript["A", 
+           $CellContext`state["k"]], " = S diag(", 
+          Subscript["lambda", 1], "^k, ", 
+          Subscript["lambda", 2], "^k, ", 
+          Subscript["lambda", 3], "^k) ", 
+          Superscript["S", "-1"]}], 12], 
+       Grid[
+        If[
+         TrueQ[$CellContext`showQR], {{
+           Style[
+            Row[{
+              Superscript["A", 
+               $CellContext`state["k"]], " = Q R"}], Bold], 
+           $CellContext`basisPowerMatrixView[
+            $CellContext`state["Power"]], "=", 
+           $CellContext`basisPowerMatrixView[
+            $CellContext`state["Q"]], 
+           $CellContext`basisPowerMatrixView[
+            $CellContext`state["R"]]}}, {{
+           Style[
+            Superscript["A", 
+             $CellContext`state["k"]], Bold], 
+           $CellContext`basisPowerMatrixView[
+            $CellContext`state["Power"]]}}], Alignment -> Center, 
+        Spacings -> {1, 0.5}], 
+       If[
+        TrueQ[$CellContext`showQR], 
+        Style[
+        "Q columns are unit and mutually perpendicular. Use Unit scale to see \
+them at large k.", 11, 
+         GrayLevel[0.35]], Nothing]}, Alignment -> Center, Spacings -> 
+      0.6], $CellContext`basisPowerMatrixView[
+      Pattern[$CellContext`m, 
+       Blank[]]] := Style[
+      MatrixForm[
+       Map[$CellContext`basisPowerNumber, $CellContext`m, {2}]], 11, 
+      FontFamily -> "Arial"]}]], "Output",
+ CellChangeTimes->{{4.004044232496665*^9, 4.004044254499251*^9}, {
+   4.004044363732986*^9, 4.004044382399457*^9}, 4.004044545032036*^9, {
+   4.004044620465535*^9, 4.0040446304155912`*^9}, {4.004075093295575*^9, 
+   4.0040750951443243`*^9}, 4.004075184148513*^9, {4.004084214991516*^9, 
+   4.004084270780808*^9}},
+ CellLabel->"Out[93]=",ExpressionUUID->"76d1d292-e5b4-44f9-be0b-978bc62149c9"]
+}, Open  ]]
+}, Open  ]],
+
+Cell[CellGroupData[{
+
+Cell["Controls and interpretation", "Section",ExpressionUUID->"5194ff48-8c9c-40ff-a190-3c1a0b843f6e"],
+
+Cell["\<\
+Iteration k shows A^k e1, A^k e2, A^k e3; k = 0 shows the original standard \
+basis. The three colored checkboxes hide or show each vector and its \
+components independently. Show Q adds the unit columns of the QR factor \
+without changing A^k.\
+\>", "Text",ExpressionUUID->"d95b6d88-04bf-4d3e-81bf-a66c33ab09f0"],
+
+Cell["\<\
+The logarithmic Zoom in / out slider works after rotation as well. It spans \
+many orders of magnitude. Fit vectors restores the default scale for the \
+current iteration; Unit scale brings the eigenvectors and the Q columns into \
+view. Drag the plot to rotate it about the origin. The camera is retained \
+when controls change.\
+\>", "Text",ExpressionUUID->"b07106dd-0612-4dbc-be99-177c0cf56f9c"],
+
+Cell["\<\
+Pale arrows decompose a vector along the eigenvector directions. At k = 0 \
+their coefficients are the columns of S^-1; at iteration k the j-th \
+coefficient is multiplied by lambda_j^k. For orthogonal eigenvectors these \
+are perpendicular projections. For nonorthogonal eigenvectors they are the \
+components of an oblique decomposition, so dot products alone would be \
+incorrect.\
+\>", "Text",ExpressionUUID->"802211d1-1fc4-45be-ad03-d30fa26cb434"],
+
+Cell["\<\
+Grey direction guides are visual references and have no length scale. Unit \
+eigenvector arrows and all A^k e_i and Q arrows have their true lengths. If a \
+vector leaves the zoomed window, a labeled clipped line replaces its \
+arrowhead. Axes and matrix entries retain physical units.\
+\>", "Text",ExpressionUUID->"d5993ba2-8206-450a-a782-5d484f354963"],
+
+Cell["\<\
+QR is computed at extra working precision, with nonnegative diagonal entries \
+in R. If A^k is singular, an orthonormal completion in Q is not unique. \
+Complex eigenvectors and Jordan blocks are outside the input model of this \
+real, diagonalizable 3D visualization.\
+\>", "Text",ExpressionUUID->"9f638bd1-df56-4d26-80f2-757456ce69c6"]
+}, Open  ]]
+}, Open  ]]
+},
+WindowSize->{1180, 838},
+WindowMargins->{{Automatic, 50}, {Automatic, 0}},
+WindowTitle->"Matrix powers and QR",
+Magnification:>1.25 Inherited,
+FrontEndVersion->"13.3 for Mac OS X ARM (64-bit) (July 24, 2023)",
+StyleDefinitions->"Default.nb",
+ExpressionUUID->"baf58356-f293-4759-a688-ac85715071e7"
+]
+(* End of Notebook Content *)
+
+(* Internal cache information *)
+(*CellTagsOutline
+CellTagsIndex->{}
+*)
+(*CellTagsIndex
+CellTagsIndex->{}
+*)
+(*NotebookFileOutline
+Notebook[{
+Cell[CellGroupData[{
+Cell[614, 23, 107, 0, 123, "Title",ExpressionUUID->"c1288c6e-3eb8-425e-b51d-f41ddcf15319"],
+Cell[724, 25, 230, 3, 44, "Text",ExpressionUUID->"f9f18385-668f-45a9-a378-61286f06e999"],
+Cell[957, 30, 264, 4, 44, "Text",ExpressionUUID->"11dd1436-046d-40a5-85c7-a81feafffd72"],
+Cell[CellGroupData[{
+Cell[1246, 38, 132, 0, 84, "Section",ExpressionUUID->"698e6241-09c3-46ab-80d4-d64f9cec26eb"],
+Cell[1381, 40, 17960, 248, 87, "Input",ExpressionUUID->"9d5c6ab7-ffc4-44a4-9411-48db0006a35e",
+ InitializationCell->True]
+}, Closed]],
+Cell[CellGroupData[{
+Cell[19378, 293, 91, 0, 65, "Section",ExpressionUUID->"f29c7d5e-52ca-4326-aa1e-20bb17bf2c20"],
+Cell[19472, 295, 336, 5, 73, "Text",ExpressionUUID->"6d102023-5570-43b3-aeb4-4c71d0ab5b73"],
+Cell[CellGroupData[{
+Cell[19833, 304, 1483, 40, 216, "Input",ExpressionUUID->"bbd211c3-727d-4648-92d6-0f84a186c1b5"],
+Cell[21319, 346, 710, 17, 42, "Output",ExpressionUUID->"22a486bb-fa4a-45f7-9a84-a329e242a832"],
+Cell[22032, 365, 56138, 1189, 1421, "Output",ExpressionUUID->"76d1d292-e5b4-44f9-be0b-978bc62149c9"]
+}, Open  ]]
+}, Open  ]],
+Cell[CellGroupData[{
+Cell[78219, 1560, 101, 0, 84, "Section",ExpressionUUID->"5194ff48-8c9c-40ff-a190-3c1a0b843f6e"],
+Cell[78323, 1562, 323, 5, 73, "Text",ExpressionUUID->"d95b6d88-04bf-4d3e-81bf-a66c33ab09f0"],
+Cell[78649, 1569, 408, 6, 102, "Text",ExpressionUUID->"b07106dd-0612-4dbc-be99-177c0cf56f9c"],
+Cell[79060, 1577, 462, 7, 102, "Text",ExpressionUUID->"802211d1-1fc4-45be-ad03-d30fa26cb434"],
+Cell[79525, 1586, 364, 5, 102, "Text",ExpressionUUID->"d5993ba2-8206-450a-a782-5d484f354963"],
+Cell[79892, 1593, 347, 5, 73, "Text",ExpressionUUID->"9f638bd1-df56-4d26-80f2-757456ce69c6"]
+}, Open  ]]
+}, Open  ]]
+}
+]
+*)
+
